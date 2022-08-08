@@ -7,19 +7,7 @@ void println(LPCSTR m) {
     OutputDebugStringA("\n");
 }
 
-#define uint8 uint8_t 
-#define uint16 uint16_t 
-#define uint32 uint32_t 
-#define uint64 uint64_t 
-
-#define int8 int8_t 
-#define int16 int16_t 
-#define int32 int32_t 
-#define int64 int64_t 
-
-#define internal static
-#define local_persist static 
-#define global_variable static 
+typedef void(*pixel_update_fn)(uint32_t*, int, int, int);
 
 struct Bitmap {
     BITMAPINFO info;
@@ -29,10 +17,10 @@ struct Bitmap {
     int bytesPerPixel;
 };
 
-global_variable bool globalIsRunning = false;
-global_variable Bitmap globalBitmap;
-global_variable int globalWindowWidth;
-global_variable int globalWindowHeight;
+bool globalIsRunning = false;
+Bitmap globalBitmap;
+int globalWindowWidth;
+int globalWindowHeight;
 
 int rectHeight(RECT rect) {
     return rect.bottom - rect.top;
@@ -41,15 +29,22 @@ int rectWidth(RECT rect) {
     return rect.right - rect.left;
 }
 
-internal void render(int t, void(*updatePixel)(uint32*, int, int, int)) {
+bool inCircle(int xDiff, int yDiff, int radius) {
+    return xDiff * xDiff + yDiff * yDiff < radius * radius;
+}
+
+// 0xxxRRGGBB (low bits are blue, middle green, high red, and then padding)
+uint32_t rgb(uint8_t r, uint8_t g, uint8_t b) {
+    return b | (g << 8) | (r << 16);       
+}
+
+void render(int t, pixel_update_fn updatePixel) {
     int pitch = globalBitmap.width * globalBitmap.bytesPerPixel;
-    uint8 *row = (uint8 *)globalBitmap.memory;
+    uint8_t *row = (uint8_t *)globalBitmap.memory;
 
     for (int y = 0; y < globalBitmap.height; ++y) {
-        uint32 *pixel = (uint32 *)row;
+        uint32_t *pixel = (uint32_t *)row;
         for (int x = 0; x < globalBitmap.width; ++x) {
-            // 0xxxRRGGBB
-            // Blues
             updatePixel(pixel, x, y, t);
             ++pixel;
         }
@@ -57,15 +52,7 @@ internal void render(int t, void(*updatePixel)(uint32*, int, int, int)) {
     }
 }
 
-internal bool inCircle(int xDiff, int yDiff, int radius) {
-    return xDiff * xDiff + yDiff * yDiff < radius * radius;
-}
-
-internal uint32 rgb(uint8 r, uint8 g, uint8 b) {
-    return b | (g << 8) | (r << 16);       
-}
-
-internal void renderGradientCircle(uint32 *pixel, int x, int y, int t) {
+void renderGradientCircle(uint32_t *pixel, int x, int y, int t) {
     int centerWidth = globalWindowWidth / 2;
     int centerHeight = globalWindowHeight / 2;
     int xDiff = abs(x - centerWidth);
@@ -77,7 +64,7 @@ internal void renderGradientCircle(uint32 *pixel, int x, int y, int t) {
     }
 }
 
-internal void renderSinusCurve(uint32 *pixel, int x, int y, int t) { 
+void renderSinusCurve(uint32_t *pixel, int x, int y, int t) { 
     double v = sin((double)(x + t/50) / 30.0) * 50.0;
     int lineHeight = v + globalWindowHeight / 2;
     int curveWidth = 5;
@@ -90,15 +77,15 @@ internal void renderSinusCurve(uint32 *pixel, int x, int y, int t) {
     }
 }
 
-internal void renderWeirdGradient(uint32 *pixel, int x, int y, int t) {
+void renderWeirdGradient(uint32_t *pixel, int x, int y, int t) {
     float p = (float) x / (float) globalWindowWidth;
-    uint8 r = 100 * (1-p) + 255 * p;
-    uint8 g = 50 * (1-p) + 150 * p;
-    uint8 b = 0 * (1-p) + 40 * p;
+    uint8_t r = 100 * (1-p) + 255 * p;
+    uint8_t g = 50 * (1-p) + 150 * p;
+    uint8_t b = 0 * (1-p) + 40 * p;
     *pixel = rgb(r, g, b);
 }
 
-internal float gradient(int cx, int cy, int x, int y, float maxSqDist) {
+float gradient(int cx, int cy, int x, int y, float maxSqDist) {
     int diffX = cx - x;
     int diffY = cy - y;
 
@@ -110,18 +97,18 @@ internal float gradient(int cx, int cy, int x, int y, float maxSqDist) {
     }
 }
 
-internal void renderFlat(uint32* pixel, int x, int y, int t) {
+void renderFlat(uint32_t* pixel, int x, int y, int t) {
     *pixel = rgb(0, 0, 255);
 }
 
-internal void renderWeirdGradient2(uint32 *pixel, int x, int y, int t) {
+void renderWeirdGradient2(uint32_t *pixel, int x, int y, int t) {
     float rg = gradient(200, 200, x, y, 500000);
     float gg = gradient(globalWindowWidth, 100, x, y, 500000);
     float bg = gradient(globalWindowWidth/2, 500, x, y, 500000);
 
-    uint8 r =  255 * rg;
-    uint8 g = 255 * gg;
-    uint8 b = 255 * bg;
+    uint8_t r =  255 * rg;
+    uint8_t g = 255 * gg;
+    uint8_t b = 255 * bg;
     *pixel = rgb(r, g, b);
 }
 
@@ -139,7 +126,7 @@ void updateBitmapSize(int width, int height) {
     globalBitmap.info.bmiHeader.biHeight = -height;
 }
 
-internal void resizeBitmapMemory(int width, int height) {
+void resizeBitmapMemory(int width, int height) {
     freeMemoryIfUsed(globalBitmap.memory);
     updateBitmapSize(width, height);
 
@@ -148,7 +135,7 @@ internal void resizeBitmapMemory(int width, int height) {
     globalBitmap.memory = VirtualAlloc(0, bitmapMemorySize, MEM_COMMIT, PAGE_READWRITE);
 }
 
-internal void updateBuffer(HDC deviceContext) {
+void updateBuffer(HDC deviceContext) {
     StretchDIBits(deviceContext,
         0, 0, globalWindowWidth, globalWindowHeight,
         0, 0, globalBitmap.width, globalBitmap.height,
@@ -159,7 +146,7 @@ internal void updateBuffer(HDC deviceContext) {
 }
 
 void handleKeyInput(WPARAM wParam, LPARAM lParam) {
-    uint32 vkCode = wParam;
+    uint32_t vkCode = wParam;
     bool wasDown = (lParam >> 30) & 0x01;
     switch (vkCode) {
         case 'W': {
@@ -223,8 +210,8 @@ LRESULT CALLBACK windowProc(HWND windowHandle, UINT message, WPARAM wParam, LPAR
     return result;
 }
 
-WNDCLASS setupWindowClass(HINSTANCE instance) {
-    WNDCLASS windowClass = {};
+WNDCLASSA setupWindowClass(HINSTANCE instance) {
+    WNDCLASSA windowClass = {};
     windowClass.style = CS_OWNDC | CS_HREDRAW | CS_VREDRAW;
     windowClass.lpfnWndProc = windowProc;
     windowClass.hInstance = instance;
@@ -240,7 +227,7 @@ void setupGlobals() {
     globalBitmap.info.bmiHeader.biCompression = BI_RGB;
 }
 
-HWND setupWindowHandle(WNDCLASS windowClass, HINSTANCE instance) {
+HWND setupWindowHandle(WNDCLASSA windowClass, HINSTANCE instance) {
     return CreateWindowExA(
         0,
         windowClass.lpszClassName,
@@ -260,8 +247,8 @@ HWND setupWindowHandle(WNDCLASS windowClass, HINSTANCE instance) {
 int WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLine, int showCode){
     setupGlobals();
 
-    WNDCLASS windowClass = setupWindowClass(instance);
-    if (!RegisterClass(&windowClass)) {
+    WNDCLASSA windowClass = setupWindowClass(instance);
+    if (!RegisterClassA(&windowClass)) {
         // Error 
         println("Register Class failed");
         return 0;
@@ -287,14 +274,12 @@ int WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLine, int s
             DispatchMessageA(&message);
         }
 
-        auto 
-
         // renderWeirdGradient(xOffset, yOffset, 60.0, 360.0);
         // render(t, *renderGradientCircle);
         // render(t, *renderWeirdGradient);
         // render(t, *renderSinusCurve);
-        // render(t, *renderWeirdGradient2);
-        render(t, *renderFlat);
+        render(t, *renderWeirdGradient2);
+        // render(t, *renderFlat);
 
         HDC deviceContext = GetDC(windowHandle);
         updateBuffer(deviceContext);
