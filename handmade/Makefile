@@ -1,5 +1,9 @@
-all: 
-	pushd build && cl -Zi -EHsc ../main.cpp -Fe:Handmade.exe User32.lib Gdi32.lib && popd
+COMPILER = cl
+LIBS = User32.lib Gdi32.lib # Dsound.lib
+FLAGS = -Zi -EHsc
+
+all: main.cpp 
+	pushd build && ${COMPILER} ${FLAGS} ../main.cpp -Fe:Handmade.exe ${LIBS} && popd
 
 run:
 	./build/Handmade.exe
