@@ -376,6 +376,17 @@ void drawCubicPolynomialFromPoints(Point p0, Point p1, Point p2, Point p3, uint3
     // Then we draw lines between each sample
 }
 
+void drawCubicPolynomialFromBlossomPoints(Point p0, Point p1, Point cp0, Point cp1, uint32_t steps) {
+    // Use bernstein polynomials to sample points
+    auto b0 = [](int t) { return (1 - t) * (1 - t) * (1 - t);};
+    auto b1 = [](int t) { return 3*t*(1-t)*(1-t);};
+    auto b2 = [](int t) { return 3*t*t*(1-t);};
+    auto b3 = [](int t) { return t*t*t; };
+
+
+ 
+}
+
 void drawCubitPolynomialFromHermite(Point p0, Point p1, Point v0, Point v1, uint32_t steps) {
     // TODO: Do this using some fancy linear algebra multiplication
     auto h0 = [](int t) { return 2*t*t*t - 3*t*t + 1;};
